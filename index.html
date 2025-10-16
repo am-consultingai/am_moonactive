@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Building the Lookdev Review Agent: Automating Tech Art Reviews with AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy-900: #0a1020;
+    --navy-800: #0f1a34;
+    --navy-700: #132240;
+    --navy-600: #1a2b4f;
+    --navy-500: #223765;
+    --fg: #e6f0ff;
+    --muted: #a7b8d8;
+    --accent: #6ee7ff;
+    --accent-2: #a78bfa;
+    --glass: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.1);
+    --shadow: 0 18px 50px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    color: var(--fg);
+    background:
+      radial-gradient(1200px 800px at 80% -10%, rgba(167,139,250,0.18), transparent 60%),
+      radial-gradient(900px 700px at -10% 10%, rgba(110,231,255,0.18), transparent 55%),
+      linear-gradient(180deg, var(--navy-900), var(--navy-800) 40%, var(--navy-700) 100%);
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    line-height: 1.6;
+  }
+
+  /* Layout helpers */
+  .container { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 56px 0; }
+
+  /* Hero */
+  header.hero {
+    padding: clamp(48px, 8vw, 88px) 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 36px;
+    align-items: center;
+  }
+  @media (max-width: 980px) { .hero-grid { grid-template-columns: 1fr; } }
+
+  .eyebrow {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: .05em;
+  }
+  h1 {
+    margin: 10px 0 10px;
+    font-size: clamp(28px, 5vw, 48px);
+    line-height: 1.1;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .subtitle { color: var(--muted); max-width: 60ch; }
+  .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+
+  .btn {
+    border: 0;
+    padding: 12px 18px;
+    border-radius: 12px;
+    color: #03111b;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    text-decoration: none;
+    transform: translateY(0);
+    transition: transform .2s ease, filter .2s ease;
+  }
+  .btn:hover { transform: translateY(-3px); filter: brightness(1.05); }
+  .btn.secondary {
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    color: var(--fg);
+    border: 1px solid var(--border);
+  }
+
+  .hero-media {
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    transform: translateY(0);
+    transition: transform .35s ease;
+  }
+  .hero-media:hover { transform: translateY(-6px); }
+  .hero-media img { width: 100%; height: 100%; object-fit: cover; display:block; filter: saturate(1.05) contrast(1.05); }
+
+  /* Value strip */
+  .value-strip {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 16px;
+    margin-top: 18px;
+  }
+  .kpi {
+    grid-column: span 3;
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    transition: transform .25s ease, box-shadow .25s ease;
+  }
+  .kpi:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.35); }
+  .kpi h3 { margin: 6px 0 4px; font-size: 18px; color: #b9dafa; }
+  .kpi p { margin: 0; color: var(--muted); }
+  @media (max-width: 980px) { .kpi { grid-column: span 6; } }
+  @media (max-width: 640px) { .kpi { grid-column: span 12; } }
+
+  /* Sessions */
+  #sessions .lead { color: var(--muted); max-width: 75ch; }
+  .sessions-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 18px;
+    margin-top: 18px;
+  }
+  .session-card {
+    grid-column: span 12;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(26,43,79,0.65), rgba(17,26,45,0.75)),
+      linear-gradient(135deg, rgba(110,231,255,0.10), rgba(167,139,250,0.10));
+    box-shadow: var(--shadow);
+    transform: translateY(0);
+    transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  }
+  .session-card:hover { transform: translateY(-5px); box-shadow: 0 16px 40px rgba(0,0,0,0.45); border-color: rgba(255,255,255,0.18); }
+
+  .session-head {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  }
+  .tag { font-size: 12px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+  .title { font-size: 22px; font-weight: 800; }
+  .session-body { padding: 18px 20px; }
+  .session-body p { margin: 0 0 10px; }
+  .session-body .biz { color: #d2def7; }
+  .session-body .small { color: var(--muted); font-size: 14px; }
+
+  details { background: rgba(0,0,0,0.15); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-top: 12px; }
+  details > summary { cursor: pointer; user-select: none; font-weight: 700; }
+  details[open] { background: rgba(0,0,0,0.2); }
+
+  ul { margin: 10px 0 0 18px; }
+  li { margin: 6px 0; }
+
+  /* Footer */
+  .footer { padding: 46px 0 80px; text-align: center; color: var(--muted); }
+  .footer a { color: var(--accent); }
+
+  /* gentle motion on hover for links inside cards */
+  a.inline-link { text-decoration: none; border-bottom: 1px dashed rgba(255,255,255,0.4); transition: color .2s ease, border-color .2s ease; }
+  a.inline-link:hover { color: #cfe8ff; border-color: #cfe8ff; }
+
+  .brand-row{
+    display:flex;align-items:center;gap:14px;margin:10px 0 6px;
+  }
+  .brand-logo{
+    height:80px;width:auto;display:block;filter: drop-shadow(0 4px 10px rgba(0,0,0,0.35));
+  }
+  .brand-note{
+    padding:6px 12px;border-radius:999px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
+    border:1px solid rgba(255,255,255,0.15);
+    font-weight:700;letter-spacing:.02em;color:#ffe6e6;
+    text-transform:none;
+  }
+
+
+  .powered-by{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:14px;}
+  .powered-by span{font-weight:700;letter-spacing:.02em;color:var(--muted);}
+  .powered-by img{height:50px;width:auto;display:block;filter: drop-shadow(0 4px 10px rgba(0,0,0,0.35));}
+
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="container hero-grid">
+    <div>
+    <div class="brand-row">
+      <img class="brand-logo" alt="Moon Active logo" src="assets/moon_active_logo.jpg" />
+      <span class="brand-note">Tailored and designed for Moon Active</span>
+    </div>
+
+      <h1>Building the Lookdev Review Agent: Automating Tech Art Reviews with AI</h1>
+      <p class="subtitle">Four hands-on sessions focused on building a Lookdev Review Agent that turns JPG batches into annotated, business-ready review sheets. The outcome improves iteration speed, reduces review overhead, and raises visual quality confidence.</p>
+      <div class="hero-cta">
+        <a href="#sessions" class="btn">View sessions</a>
+        <a href="#outcomes" class="btn secondary">See outcomes</a>
+      </div>
+
+      <div class="value-strip">
+        <div class="kpi">
+          <h3>Audience</h3>
+          <p>8 Technical Artists who ship visual deliverables.</p>
+        </div>
+        <div class="kpi">
+          <h3>Duration</h3>
+          <p>4 sessions, 2 hours each.</p>
+        </div>
+        <div class="kpi">
+          <h3>Primary Benefit</h3>
+          <p>Faster and more consistent lookdev reviews.</p>
+        </div>
+        <div class="kpi">
+          <h3>Artifact</h3>
+          <p>Deployed Lookdev Review Agent with Slack or Notion outputs.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-media"><img alt="Tech artists collaborating in a modern office" src="assets/tech_arts_meeting.png" />
+    </div>
+  </div>
+</header>
+
+<section id="sessions">
+  <div class="container">
+    <h2>Session breakdown</h2>
+    <p class="lead">Each session starts with a focused 20 minute talk. Then we build together for 100 minutes. The paragraphs below describe the goal and the business value. Technical steps are listed at the bottom of each session.</p>
+
+    <div class="sessions-grid">
+
+      <article class="session-card">
+        <div class="session-head">
+          <div class="tag">Week 1</div>
+          <div class="title">Laying the foundation</div>
+        </div>
+        <div class="session-body">
+          <p class="biz"><strong>Goal and business value.</strong> The team sets up an event driven workflow for lookdev. When new renders are exported the agent captures context and alerts the right channel. The value is faster visibility and fewer missed updates which shortens feedback cycles and reduces idle time for artists and reviewers.</p>
+          <p class="small"><strong>Lecture 20 min.</strong> Why automate lookdev reviews. How triggers and payloads map to business outcomes such as reduced cycle time and clearer ownership.</p>
+          <details>
+            <summary>Technical steps</summary>
+            <ul>
+              <li>Create a webhook trigger for new render batches.</li>
+              <li>Post a sample JSON payload with scene, artist, and timestamp.</li>
+              <li>Add a notification step such as Slack or email with deep links.</li>
+              <li>Behind the scenes use Torq to parse payloads and deliver messages.</li>
+            </ul>
+          </details>
+        </div>
+      </article>
+
+      <article class="session-card">
+        <div class="session-head">
+          <div class="tag">Week 2</div>
+          <div class="title">Teaching the agent to see</div>
+        </div>
+        <div class="session-body">
+          <p class="biz"><strong>Goal and business value.</strong> The agent produces clear captions and quick risk flags for each image. Reviewers understand what changed without digging through files. The value is faster triage and better cross team communication which keeps decision makers focused on tradeoffs not on file hunting.</p>
+          <p class="small"><strong>Lecture 20 min.</strong> How vision models and LLMs turn images into structured information. How to design prompts that produce reliable JSON suitable for dashboards.</p>
+          <details>
+            <summary>Technical steps</summary>
+            <ul>
+              <li>Retrieve exported images and call an AI analysis step for captions and tags.</li>
+              <li>Parse JSON for captions, tags, and risk flags such as overbloom or crushed blacks.</li>
+              <li>Post AI summaries to Slack in a readable template.</li>
+              <li>Behind the scenes use Torq OpenAI and function nodes for parsing and formatting.</li>
+            </ul>
+          </details>
+        </div>
+      </article>
+
+      <article class="session-card">
+        <div class="session-head">
+          <div class="tag">Week 3</div>
+          <div class="title">Making reviews visual</div>
+        </div>
+        <div class="session-body">
+          <p class="biz"><strong>Goal and business value.</strong> The agent assembles annotated contact sheets that compare variations side by side. Stakeholders can make a choice quickly and document why. The value is less meeting time and clearer decisions backed by visual evidence that is easy to share.</p>
+          <p class="small"><strong>Lecture 20 min.</strong> How to combine images, captions, and metadata into a single artifact that fits your review culture.</p>
+          <details>
+            <summary>Technical steps</summary>
+            <ul>
+              <li>Call an image service to create a contact sheet.</li>
+              <li>Embed AI captions as overlays or side labels.</li>
+              <li>Publish a summary card to Slack or Notion with links to full resolution files.</li>
+              <li>Behind the scenes orchestrate files and calls with Torq.</li>
+            </ul>
+          </details>
+        </div>
+      </article>
+
+      <article class="session-card">
+        <div class="session-head">
+          <div class="tag">Week 4</div>
+          <div class="title">From prototype to practice</div>
+        </div>
+        <div class="session-body">
+          <p class="biz"><strong>Goal and business value.</strong> The agent becomes part of daily operations with approvals, tickets, and records. The value is accountability and repeatability. Leaders get traceable decisions and teams get a reliable path from render to action.</p>
+          <p class="small"><strong>Lecture 20 min.</strong> Validation, human in the loop approvals, and integration with planning and documentation tools.</p>
+          <details>
+            <summary>Technical steps</summary>
+            <ul>
+              <li>Add a reviewer approval step such as a Slack button.</li>
+              <li>Create an issue in Jira or Trello when flags are present or when a variant is approved.</li>
+              <li>Log results to Confluence or Notion for a permanent record.</li>
+              <li>Behind the scenes manage multi step orchestration with Torq.</li>
+            </ul>
+          </details>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<section id="outcomes">
+  <div class="container">
+    <h2>Final outputs</h2>
+    <div class="value-strip">
+      <div class="kpi">
+        <h3>Production agent</h3>
+        <p>Lookdev Review Agent that automates image review and feedback loops.</p>
+      </div>
+      <div class="kpi">
+        <h3>Prompt templates</h3>
+        <p>Reusable patterns for consistent AI analysis and JSON outputs.</p>
+      </div>
+      <div class="kpi">
+        <h3>Automation patterns</h3>
+        <p>Designs you can reuse for naming, validation, and shader docs.</p>
+      </div>
+      <div class="kpi">
+        <h3>Team playbook</h3>
+        <p>Standards, roles, and next steps for Tech Art and AI.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container">
+    <div class="powered-by">
+      <span>Powered by</span>
+      <img src="https://i.ibb.co/bj2NWCq3/AM-Logo-white-blue-glow.png" alt="AM Consulting logo" />
+    </div>
+
+  </div>
+</footer>
+
+</body>
+</html>
